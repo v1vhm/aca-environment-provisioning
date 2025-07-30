@@ -21,7 +21,7 @@ jobs:
   deploy:
     permissions:
       id-token: write
-      contents: read
+      contents: write
 
     runs-on: ubuntu-latest
     env:
@@ -191,8 +191,8 @@ jobs:
       - name: Commit config file
         if: success()
         run: |
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git config user.name "github-actions[bot]"
+          git config user.email "getport-io[bot]@users.noreply.port.io"
+          git config user.name "getport-io[bot]"
           git add configs/${{ github.event.inputs.environment_name }}.yaml
           git commit -m "Add config for ${{ github.event.inputs.environment_name }}"
           git push origin HEAD:main
