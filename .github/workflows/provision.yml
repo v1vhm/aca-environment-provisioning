@@ -15,6 +15,10 @@ on:
 
 jobs:
   deploy:
+    permissions:
+      id-token: write
+      contents: read
+
     runs-on: ubuntu-latest
     env:
       ARM_USE_OIDC: true
