@@ -31,13 +31,56 @@ jobs:
       ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       PORT_RUN_ID: ${{ fromJson(inputs.port_context).runId }}
     steps:
+      - name: Start provisioning
+        uses: port-labs/port-github-action@v1
+        with:
+          baseUrl: ${{ secrets.PORT_BASE_URL }}
+          clientId: ${{ secrets.PORT_CLIENT_ID }}
+          clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
+          operation: PATCH_RUN
+          runId: ${{ env.PORT_RUN_ID }}
+          logMessage: 'Starting provisioning'
+
       - uses: actions/checkout@v3
+
+      - name: Log checkout
+        if: success()
+        uses: port-labs/port-github-action@v1
+        with:
+          baseUrl: ${{ secrets.PORT_BASE_URL }}
+          clientId: ${{ secrets.PORT_CLIENT_ID }}
+          clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
+          operation: PATCH_RUN
+          runId: ${{ env.PORT_RUN_ID }}
+          logMessage: 'Repository checked out'
 
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
 
+      - name: Log jq install
+        if: success()
+        uses: port-labs/port-github-action@v1
+        with:
+          baseUrl: ${{ secrets.PORT_BASE_URL }}
+          clientId: ${{ secrets.PORT_CLIENT_ID }}
+          clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
+          operation: PATCH_RUN
+          runId: ${{ env.PORT_RUN_ID }}
+          logMessage: 'jq installed'
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
+
+      - name: Log terraform setup
+        if: success()
+        uses: port-labs/port-github-action@v1
+        with:
+          baseUrl: ${{ secrets.PORT_BASE_URL }}
+          clientId: ${{ secrets.PORT_CLIENT_ID }}
+          clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
+          operation: PATCH_RUN
+          runId: ${{ env.PORT_RUN_ID }}
+          logMessage: 'Terraform setup complete'
 
       - name: Azure Login
         uses: azure/login@v1
@@ -46,9 +89,31 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Log Azure login
+        if: success()
+        uses: port-labs/port-github-action@v1
+        with:
+          baseUrl: ${{ secrets.PORT_BASE_URL }}
+          clientId: ${{ secrets.PORT_CLIENT_ID }}
+          clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
+          operation: PATCH_RUN
+          runId: ${{ env.PORT_RUN_ID }}
+          logMessage: 'Azure authentication complete'
+
 
       - name: Terraform Init
         run: terraform -chdir=terraform init
+
+      - name: Log terraform init
+        if: success()
+        uses: port-labs/port-github-action@v1
+        with:
+          baseUrl: ${{ secrets.PORT_BASE_URL }}
+          clientId: ${{ secrets.PORT_CLIENT_ID }}
+          clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
+          operation: PATCH_RUN
+          runId: ${{ env.PORT_RUN_ID }}
+          logMessage: 'Terraform init complete'
 
       - name: Terraform Plan
         id: plan
@@ -59,7 +124,7 @@ jobs:
             -var="env_code=${{ github.event.inputs.env_code }}" \
             -input=false -out=tfplan
 
-      - name: Report plan success
+      - name: Log terraform plan
         if: success()
         uses: port-labs/port-github-action@v1
         with:
@@ -68,17 +133,38 @@ jobs:
           clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
           operation: PATCH_RUN
           runId: ${{ env.PORT_RUN_ID }}
-          status: success
           logMessage: 'Terraform plan succeeded'
 
       - name: Terraform Apply
         if: success()
         run: terraform -chdir=terraform apply -input=false -auto-approve tfplan
 
+      - name: Log terraform apply
+        if: success()
+        uses: port-labs/port-github-action@v1
+        with:
+          baseUrl: ${{ secrets.PORT_BASE_URL }}
+          clientId: ${{ secrets.PORT_CLIENT_ID }}
+          clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
+          operation: PATCH_RUN
+          runId: ${{ env.PORT_RUN_ID }}
+          logMessage: 'Terraform apply complete'
+
       - name: Capture outputs
         if: success()
         id: tf_output
         run: terraform -chdir=terraform output -json > ../outputs.json
+
+      - name: Log outputs captured
+        if: success()
+        uses: port-labs/port-github-action@v1
+        with:
+          baseUrl: ${{ secrets.PORT_BASE_URL }}
+          clientId: ${{ secrets.PORT_CLIENT_ID }}
+          clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
+          operation: PATCH_RUN
+          runId: ${{ env.PORT_RUN_ID }}
+          logMessage: 'Terraform outputs captured'
 
       - name: Generate config file
         if: success()
@@ -91,6 +177,17 @@ jobs:
             "$NAME" "$LOCATION" "$RG" "$WORKSPACE" > \
             configs/${{ github.event.inputs.environment_name }}.yaml
 
+      - name: Log config generated
+        if: success()
+        uses: port-labs/port-github-action@v1
+        with:
+          baseUrl: ${{ secrets.PORT_BASE_URL }}
+          clientId: ${{ secrets.PORT_CLIENT_ID }}
+          clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
+          operation: PATCH_RUN
+          runId: ${{ env.PORT_RUN_ID }}
+          logMessage: 'Configuration file generated'
+
       - name: Commit config file
         if: success()
         run: |
@@ -99,6 +196,17 @@ jobs:
           git add configs/${{ github.event.inputs.environment_name }}.yaml
           git commit -m "Add config for ${{ github.event.inputs.environment_name }}"
           git push origin HEAD:main
+
+      - name: Log config committed
+        if: success()
+        uses: port-labs/port-github-action@v1
+        with:
+          baseUrl: ${{ secrets.PORT_BASE_URL }}
+          clientId: ${{ secrets.PORT_CLIENT_ID }}
+          clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
+          operation: PATCH_RUN
+          runId: ${{ env.PORT_RUN_ID }}
+          logMessage: 'Configuration committed'
 
       - name: Mark run success
         if: success()
@@ -109,7 +217,7 @@ jobs:
           clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
           operation: PATCH_RUN
           runId: ${{ env.PORT_RUN_ID }}
-          status: success
+          status: SUCCESS
           logMessage: 'Provisioning complete'
 
       - name: Mark run failure
@@ -121,5 +229,5 @@ jobs:
           clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
           operation: PATCH_RUN
           runId: ${{ env.PORT_RUN_ID }}
-          status: failure
+          status: FAILURE
           logMessage: 'Provisioning failed'
