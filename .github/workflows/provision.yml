@@ -12,6 +12,10 @@ on:
       env_code:
         description: 'Three letter environment code'
         required: true
+      port_context:
+        required: true
+        description: Includes the action's run id
+        type: string
 
 jobs:
   deploy:
@@ -25,6 +29,7 @@ jobs:
       ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      PORT_RUN_ID: ${{ fromJson(inputs.port_context).runId }}
     steps:
       - uses: actions/checkout@v3
 
@@ -41,18 +46,6 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Create Port run
-        id: create_run
-        uses: port-labs/port-github-action@v1
-        with:
-          baseUrl: ${{ secrets.PORT_BASE_URL }}
-          clientId: ${{ secrets.PORT_CLIENT_ID }}
-          clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
-          operation: CREATE_RUN
-          action: provision-aca-environment
-          identifier: ${{ github.run_id }}
-          summary: 'Provision ACA environment'
-          link: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
       - name: Terraform Init
         run: terraform -chdir=terraform init
@@ -74,7 +67,7 @@ jobs:
           clientId: ${{ secrets.PORT_CLIENT_ID }}
           clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
           operation: PATCH_RUN
-          runId: ${{ steps.create_run.outputs.identifier }}
+          runId: ${{ env.PORT_RUN_ID }}
           status: success
           logMessage: 'Terraform plan succeeded'
 
@@ -115,7 +108,7 @@ jobs:
           clientId: ${{ secrets.PORT_CLIENT_ID }}
           clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
           operation: PATCH_RUN
-          runId: ${{ steps.create_run.outputs.identifier }}
+          runId: ${{ env.PORT_RUN_ID }}
           status: success
           logMessage: 'Provisioning complete'
 
@@ -127,6 +120,6 @@ jobs:
           clientId: ${{ secrets.PORT_CLIENT_ID }}
           clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
           operation: PATCH_RUN
-          runId: ${{ steps.create_run.outputs.identifier }}
+          runId: ${{ env.PORT_RUN_ID }}
           status: failure
           logMessage: 'Provisioning failed'
