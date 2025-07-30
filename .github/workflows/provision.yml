@@ -1,0 +1,121 @@
+name: Provision ACA Environment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment_name:
+        description: 'Name of the container app environment'
+        required: true
+      location:
+        description: 'Azure region'
+        required: true
+      env_code:
+        description: 'Three letter environment code'
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Create Port run
+        id: create_run
+        uses: port-labs/port-github-action@v1
+        with:
+          baseUrl: ${{ secrets.PORT_BASE_URL }}
+          clientId: ${{ secrets.PORT_CLIENT_ID }}
+          clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
+          operation: CREATE_RUN
+          action: provision-aca-environment
+          identifier: ${{ github.run_id }}
+          summary: 'Provision ACA environment'
+          link: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+      - name: Terraform Init
+        run: terraform -chdir=terraform init
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          terraform -chdir=terraform plan \
+            -var="name=${{ github.event.inputs.environment_name }}" \
+            -var="location=${{ github.event.inputs.location }}" \
+            -var="env_code=${{ github.event.inputs.env_code }}" \
+            -input=false -out=tfplan
+
+      - name: Report plan success
+        if: success()
+        uses: port-labs/port-github-action@v1
+        with:
+          baseUrl: ${{ secrets.PORT_BASE_URL }}
+          clientId: ${{ secrets.PORT_CLIENT_ID }}
+          clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
+          operation: PATCH_RUN
+          runId: ${{ steps.create_run.outputs.identifier }}
+          status: success
+          logMessage: 'Terraform plan succeeded'
+
+      - name: Terraform Apply
+        if: success()
+        run: terraform -chdir=terraform apply -input=false -auto-approve tfplan
+
+      - name: Capture outputs
+        if: success()
+        id: tf_output
+        run: terraform -chdir=terraform output -json > ../outputs.json
+
+      - name: Generate config file
+        if: success()
+        run: |
+          NAME=$(jq -r '.name.value' ../outputs.json)
+          LOCATION=$(jq -r '.location.value' ../outputs.json)
+          RG=$(jq -r '.resource_group_name.value' ../outputs.json)
+          WORKSPACE=$(jq -r '.workspace_name.value' ../outputs.json)
+          printf "name: %s\nlocation: %s\nresource_group_name: %s\nworkspace_name: %s\n" \
+            "$NAME" "$LOCATION" "$RG" "$WORKSPACE" > \
+            configs/${{ github.event.inputs.environment_name }}.yaml
+
+      - name: Commit config file
+        if: success()
+        run: |
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add configs/${{ github.event.inputs.environment_name }}.yaml
+          git commit -m "Add config for ${{ github.event.inputs.environment_name }}"
+          git push origin HEAD:main
+
+      - name: Mark run success
+        if: success()
+        uses: port-labs/port-github-action@v1
+        with:
+          baseUrl: ${{ secrets.PORT_BASE_URL }}
+          clientId: ${{ secrets.PORT_CLIENT_ID }}
+          clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
+          operation: PATCH_RUN
+          runId: ${{ steps.create_run.outputs.identifier }}
+          status: success
+          logMessage: 'Provisioning complete'
+
+      - name: Mark run failure
+        if: failure()
+        uses: port-labs/port-github-action@v1
+        with:
+          baseUrl: ${{ secrets.PORT_BASE_URL }}
+          clientId: ${{ secrets.PORT_CLIENT_ID }}
+          clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
+          operation: PATCH_RUN
+          runId: ${{ steps.create_run.outputs.identifier }}
+          status: failure
+          logMessage: 'Provisioning failed'

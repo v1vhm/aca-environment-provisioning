@@ -1,0 +1,4 @@
+name: dev-aca-env
+location: westeurope
+resource_group_name: dev-resource-group
+workspace_name: dev-law
