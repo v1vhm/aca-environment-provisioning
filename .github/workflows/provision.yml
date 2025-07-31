@@ -89,6 +89,14 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Capture Azure details
+        if: success()
+        id: azure
+        run: |
+          USER=$(az account show --query user.name -o tsv)
+          SUB=$(az account show --query id -o tsv)
+          echo "msg=Authenticated as $USER in subscription $SUB" >> $GITHUB_OUTPUT
+
       - name: Log Azure login
         if: success()
         uses: port-labs/port-github-action@v1
@@ -98,7 +106,7 @@ jobs:
           clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
           operation: PATCH_RUN
           runId: ${{ env.PORT_RUN_ID }}
-          logMessage: 'Azure authentication complete'
+          logMessage: ${{ steps.azure.outputs.msg }}
 
 
       - name: Terraform Init
@@ -122,7 +130,14 @@ jobs:
             -var="name=${{ github.event.inputs.environment_name }}" \
             -var="location=${{ github.event.inputs.location }}" \
             -var="env_code=${{ github.event.inputs.env_code }}" \
-            -input=false -out=tfplan
+            -input=false -out=tfplan | tee plan.log
+
+      - name: Capture plan summary
+        if: success()
+        id: plan_summary
+        run: |
+          SUMMARY=$(grep -E '^Plan:' plan.log || echo 'Plan summary unavailable')
+          echo "msg=$SUMMARY" >> $GITHUB_OUTPUT
 
       - name: Log terraform plan
         if: success()
@@ -133,11 +148,18 @@ jobs:
           clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
           operation: PATCH_RUN
           runId: ${{ env.PORT_RUN_ID }}
-          logMessage: 'Terraform plan succeeded'
+          logMessage: ${{ steps.plan_summary.outputs.msg }}
 
       - name: Terraform Apply
         if: success()
-        run: terraform -chdir=terraform apply -input=false -auto-approve tfplan
+        run: terraform -chdir=terraform apply -input=false -auto-approve tfplan | tee apply.log
+
+      - name: Capture apply summary
+        if: success()
+        id: apply_summary
+        run: |
+          SUMMARY=$(grep -E '^Apply complete' apply.log || echo 'Apply complete')
+          echo "msg=$SUMMARY" >> $GITHUB_OUTPUT
 
       - name: Log terraform apply
         if: success()
@@ -148,7 +170,7 @@ jobs:
           clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
           operation: PATCH_RUN
           runId: ${{ env.PORT_RUN_ID }}
-          logMessage: 'Terraform apply complete'
+          logMessage: ${{ steps.apply_summary.outputs.msg }}
 
       - name: Capture outputs
         if: success()
@@ -168,14 +190,16 @@ jobs:
 
       - name: Generate config file
         if: success()
+        id: config
         run: |
           NAME=$(jq -r '.name.value' ../outputs.json)
           LOCATION=$(jq -r '.location.value' ../outputs.json)
           RG=$(jq -r '.resource_group_name.value' ../outputs.json)
           WORKSPACE=$(jq -r '.workspace_name.value' ../outputs.json)
+          CONFIG_FILE=configs/${{ github.event.inputs.environment_name }}.yaml
           printf "name: %s\nlocation: %s\nresource_group_name: %s\nworkspace_name: %s\n" \
-            "$NAME" "$LOCATION" "$RG" "$WORKSPACE" > \
-            configs/${{ github.event.inputs.environment_name }}.yaml
+            "$NAME" "$LOCATION" "$RG" "$WORKSPACE" > "$CONFIG_FILE"
+          echo "file=$CONFIG_FILE" >> $GITHUB_OUTPUT
 
       - name: Log config generated
         if: success()
@@ -186,7 +210,7 @@ jobs:
           clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
           operation: PATCH_RUN
           runId: ${{ env.PORT_RUN_ID }}
-          logMessage: 'Configuration file generated'
+          logMessage: Generated ${{ steps.config.outputs.file }}
 
       - name: Commit config file
         if: success()
@@ -206,7 +230,29 @@ jobs:
           clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
           operation: PATCH_RUN
           runId: ${{ env.PORT_RUN_ID }}
-          logMessage: 'Configuration committed'
+          logMessage: Committed ${{ steps.config.outputs.file }}
+
+      - name: Compose run summary
+        if: success()
+        id: run_summary
+        run: |
+          RG=$(jq -r '.resource_group_name.value' ../outputs.json)
+          WORKSPACE=$(jq -r '.workspace_name.value' ../outputs.json)
+          MSG="Environment ${{ github.event.inputs.environment_name }} in ${{ github.event.inputs.location }}"
+          MSG+=" using RG $RG and workspace $WORKSPACE"
+          MSG+=". Config: ${{ steps.config.outputs.file }}"
+          echo "msg=$MSG" >> $GITHUB_OUTPUT
+
+      - name: Log run summary
+        if: success()
+        uses: port-labs/port-github-action@v1
+        with:
+          baseUrl: ${{ secrets.PORT_BASE_URL }}
+          clientId: ${{ secrets.PORT_CLIENT_ID }}
+          clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
+          operation: PATCH_RUN
+          runId: ${{ env.PORT_RUN_ID }}
+          logMessage: ${{ steps.run_summary.outputs.msg }}
 
       - name: Mark run success
         if: success()
