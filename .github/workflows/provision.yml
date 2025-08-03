@@ -41,7 +41,7 @@ jobs:
           runId: ${{ env.PORT_RUN_ID }}
           logMessage: 'Starting provisioning'
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Log checkout
         if: success()
@@ -83,7 +83,7 @@ jobs:
           logMessage: 'Terraform setup complete'
 
       - name: Azure Login
-        uses: azure/login@v1
+        uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
