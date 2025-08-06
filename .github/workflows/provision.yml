@@ -108,9 +108,32 @@ jobs:
           runId: ${{ env.PORT_RUN_ID }}
           logMessage: ${{ steps.azure.outputs.msg }}
 
+      - name: Create state container
+        run: |
+          az storage container create \
+            --name ${{ github.event.inputs.environment_name }} \
+            --account-name vendingtfstate \
+            --resource-group v1vhm-rg-vending-prod-uks-001 \
+            --auth-mode login
+
+      - name: Log state container creation
+        if: success()
+        uses: port-labs/port-github-action@v1
+        with:
+          baseUrl: ${{ secrets.PORT_BASE_URL }}
+          clientId: ${{ secrets.PORT_CLIENT_ID }}
+          clientSecret: ${{ secrets.PORT_CLIENT_SECRET }}
+          operation: PATCH_RUN
+          runId: ${{ env.PORT_RUN_ID }}
+          logMessage: Created state container ${{ github.event.inputs.environment_name }}
 
       - name: Terraform Init
-        run: terraform -chdir=terraform init
+        run: |
+          terraform -chdir=terraform init \
+            -backend-config="resource_group_name=v1vhm-rg-vending-prod-uks-001" \
+            -backend-config="storage_account_name=vendingtfstate" \
+            -backend-config="container_name=${{ github.event.inputs.environment_name }}" \
+            -backend-config="key=terraform.tfstate"
 
       - name: Log terraform init
         if: success()
